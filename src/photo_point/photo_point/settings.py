@@ -136,13 +136,6 @@ EMAIL_USE_SSL = True
 DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
 SERVER_EMAIL = EMAIL_HOST_USER
 
-
-SMS_SETTINGS = {
-    "BACKEND": "notify.sms.backends.smsc.SmsBackend",
-    "OPTIONS": {
-        "SMSC_LOGIN": "demo",  # Login from https://smsc.ru
-        "SMSC_PASSWORD": "demo",  # Password
-        "SMSC_DEBUG": False,  # Debug flag
-        "SMSC_SENDER": False,  # Sender for message
-    }
-}
+SMSC_LOGIN="demo"
+SMSC_PASSWORD="demo"
+SMSC_URL="https://smsc.ru/sys/send.php"

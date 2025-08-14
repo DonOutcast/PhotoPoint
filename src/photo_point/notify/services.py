@@ -4,8 +4,6 @@ import requests
 from django.conf import settings
 from django.core.mail import send_mail
 
-from notify.sms.sms_message import SMSMessage
-
 
 class SendError(Exception):
     pass
@@ -23,25 +21,53 @@ def send_email(subject: str, message: str, to_email: str) -> str:
 
 
 def send_sms(phone: str, message: str) -> str:
-    message = SMSMessage(phone_numbers=[phone], message=message)
-    message.send()
-    # url = os.getenv("SMS_PROVIDER_URL")
-    # token = os.getenv("SMS_PROVIDER_TOKEN")
-    # if not phone:
-    #     raise SendError("Телефон для SMS не указан.")
-    # if not (url and token):
-    #     raise SendError("SMS-провайдер не настроен (SMS_PROVIDER_URL/TOKEN).")
-    #
-    # resp = requests.post(
-    #     url,
-    #     json={"to": phone, "message": message},
-    #     headers={"Authorization": f"Bearer {token}"},
-    #     timeout=10,
-    # )
-    # if not resp.ok:
-    #     text = resp.text[:200]
-    #     raise SendError(f"SMS HTTP {resp.status_code}: {text}")
-    return "SMS отправлено"
+    """
+    Отправка SMS через smsc.ru/sys/send.php
+    Документация: https://smsc.ru/api/http/
+    """
+    if not phone:
+        raise SendError("Телефон для SMS не указан.")
+    if not message:
+        raise SendError("Текст сообщения пуст.")
+
+    login = getattr(settings, "SMSC_LOGIN", os.getenv("SMSC_LOGIN"))
+    password = getattr(settings, "SMSC_PASSWORD", os.getenv("SMSC_PASSWORD"))
+    url = getattr(settings, "SMSC_URL", "https://smsc.ru/sys/send.php")
+
+    if not (login and password):
+        raise SendError("SMSC_LOGIN/SMSC_PASSWORD не настроены.")
+
+    params = {
+        "login": login,
+        "psw": password,
+        "phones": phone,
+        "mes": message,
+    }
+
+    try:
+        resp = requests.post(url, data=params, timeout=10)
+    except requests.RequestException as e:
+        raise SendError(f"Ошибка сети при обращении к SMSC: {e}")
+
+    if not resp.ok:
+        raise SendError(f"SMSC HTTP {resp.status_code}: {resp.text[:200]}")
+
+    try:
+        data = resp.json()
+    except ValueError:
+        text = resp.text.strip()
+        if "error" in text.lower():
+            raise SendError(f"SMSC error: {text[:200]}")
+        return "SMS отправлено"
+
+    if data.get("error") or data.get("error_code"):
+        code = data.get("error_code")
+        err = data.get("error") or "Неизвестная ошибка"
+        raise SendError(f"SMSC ошибка {code}: {err}")
+
+    sms_id = data.get("id")
+    cnt = data.get("cnt")
+    return f"SMS отправлено (id={sms_id}, cnt={cnt})"
 
 
 def send_telegram(chat_id: str, message: str) -> str:
